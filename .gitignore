@@ -1,0 +1,24 @@
+# Артефакты компиляции
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.d
+
+# Логи отладки (создаются при работе openocd и gdb)
+openocd.log
+.gdb_history
+gdb.txt
+
+# Временные файлы автоматизации вашего bash-скрипта
+.gdb_interactive.init
+
+# Временные файлы консольных редакторов (Vim, Nano, Emacs и др.)
+*.swp
+*.swo
+*~
+\#*\#
+
+*.bin
+readme.txt
