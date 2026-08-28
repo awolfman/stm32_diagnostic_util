@@ -1,61 +1,43 @@
 target remote :3333
 
-# 1. Аппаратная остановка ядра и сброс периферии
+# Аппаратная остановка ядра и сброс периферии
 monitor reset halt
 
-# 2. Загрузка прошивки в SRAM
+# Загрузка прошивки в SRAM
 load
 
-# 3. Принудительная инициализация регистров ядра для работы из SRAM (адрес 0x20000000)
+# Старт выполнения из SRAM (адрес 0x20000000).
+# Вся дальнейшая инициализация регистров выполняется кодом Reset_Handler в main.c.
 set $msp = 0x2000C000
 set $sp = 0x2000C000
 set $pc = Reset_Handler
 set {unsigned int}0xE000ED08 = 0x20000000
 
-# 4. Аппаратный обход блокировки GPIO портов через прямую запись
-# Включаем тактирование портов A, B, C (RCC_AHB2ENR)
-set *(volatile unsigned int *)(0x40021000 + 0x4C) = 0x00000007
-
-# Включаем модуль питания PWR (RCC_APB1ENR1 -> бит 28)
-set *(volatile unsigned int *)(0x40021000 + 0x58) = 0x10000000
-
-# Снимаем защиту Backup Domain (PWR_CR1 |= DBP, базовый адрес 0x40007400)
-set *(volatile unsigned int *)(0x40007400 + 0x00) = 0x00000100
-
-# Освобождаем пин PC15 от функций часового генератора LSE (RCC_BDCR)
-set *(volatile unsigned int *)(0x40021000 + 0x70) = 0x00010000
-set *(volatile unsigned int *)(0x40021000 + 0x70) = 0x00000000
-
-# Настраиваем GPIOC_MODER сразу для двух пинов на выход (PC13 и PC15)
-set *(volatile unsigned int *)(0x48000800 + 0x00) = 0x14000000
-
-# ПОДАЕМ СИГНАЛ ЗАПУСКА ИСТОЧНИКОВ ПИТАНИЯ (PC13 = 1) и выставляем RESET# флешки в HIGH (PC15 = 1)
-set *(volatile unsigned int *)(0x48000800 + 0x14) = 0x0000A000
-
-# 5. Аппаратный сброс только вычислительного ядра
-monitor reg pc Reset_Handler
-monitor reg msp 0x2000C000
-
 # Включаем текстовый вывод (Semihosting)
 monitor arm semihosting enable
 
 # ====================================================================
-# Автоматизация вывода статуса пинов и переменных
+# Вывод статуса пинов и переменных
 # ====================================================================
 define show_status
   printf "\n=== СТАТУС СИСТЕМЫ И ПЕРИФЕРИИ ===\n"
   set $idr_a = *(volatile unsigned int *)(0x48000000 + 0x10)
   set $idr_b = *(volatile unsigned int *)(0x48000400 + 0x10)
-  set $odr_b = *(volatile unsigned int *)(0x48000400 + 0x14)
 
-  printf "Пин PA10 (вход питания): %s\n", ($idr_a & (1 << 10)) ? "HIGH (1) [OK]" : "LOW (0) [FAIL]"
-  printf "Пин PB7  (вход питания): %s\n", ($idr_b & (1 << 7))  ? "HIGH (1) [OK]" : "LOW (0) [FAIL]"
-  printf "Пин PB0  (вход):         %s\n", ($idr_b & (1 << 0))  ? "HIGH (1)" : "LOW (0)"
-  printf "Пин PB1  (вход):         %s\n", ($idr_b & (1 << 1))  ? "HIGH (1)" : "LOW (0)"
-  printf "Пин PB6  (выход):        %s\n", ($odr_b & (1 << 6))  ? "HIGH (1)" : "LOW (0)"
+  printf "Пин PA10 (LTM4678): %s\n", ($idr_a & (1 << 10)) ? "HIGH (1) [OK]" : "LOW (0) [FAIL]"
+  printf "Пин PB7  (LTM4673): %s\n", ($idr_b & (1 << 7))  ? "HIGH (1) [OK]" : "LOW (0) [FAIL]"
+  printf "Пин PB0  (ALARM_IPM): %s\n", ($idr_b & (1 << 0))  ? "HIGH (1) [FAIL]" : "LOW (0) [OK]"
+  printf "Пин PB1  (THERM):     %s\n", ($idr_b & (1 << 1))  ? "HIGH (1)" : "LOW (0)"
+  printf "Пин PB6  (PLL_LOCKED):%s\n", ($idr_b & (1 << 6))  ? "HIGH (1) [FAIL]" : "LOW (0) [OK]"
+
+  printf "--- Сигналы управления CPU T2081 ---\n"
+  printf "Пин PB3  (RESET_REQ): %s, status_RESET_REQ=%d\n", ($idr_b & (1 << 3)) ? "HIGH [OK]" : "LOW [ЗАПРОС АКТИВЕН]", status_RESET_REQ
+  printf "Пин PB5  (CKSTP):     %s, status_CKSTP=%d\n", ($idr_b & (1 << 5)) ? "HIGH [OK]" : "LOW [CHECKSTOP]", status_CKSTP
+  printf "cpu_boot_stage: %d\n", cpu_boot_stage
+#  printf "status_PLL_LOCK_TIMEOUT: %d\n", status_PLL_LOCK_TIMEOUT
 
   printf "--- Состояния на шине SPI STM32 ---\n"
-  printf "PA4  (I2C_EN): %d\n", ($idr_a & (1 << 4)) ? 1 : 0
+  printf "PA4  (I2C_EN/HRESET): %d\n", ($idr_a & (1 << 4)) ? 1 : 0
   printf "PA5  (CLK):  %d\n", ($idr_a & (1 << 5)) ? 1 : 0
   printf "PA6  (MISO): %d\n", ($idr_a & (1 << 6))  ? 1 : 0
   printf "PA12 (MOSI): %d\n", ($idr_a & (1 << 12)) ? 1 : 0
